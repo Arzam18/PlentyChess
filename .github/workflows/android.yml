@@ -1,0 +1,53 @@
+name: PlentyChess Build & Bench
+
+on:
+  workflow_dispatch:
+
+jobs:
+  engine:
+    name: PlentyChess Android
+    runs-on: ubuntu-24.04
+    steps:
+
+    - name: Clone
+      uses: actions/checkout@v4
+
+    - name: Set up android compilation environment
+      run: |
+        sudo apt update && sudo apt install qemu-user
+        NDKV="27.2.12479018"
+        ANDROID_ROOT=/usr/local/lib/android
+        ANDROID_SDK_ROOT=$ANDROID_ROOT/sdk
+        SDKMANAGER=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager
+        echo "y" | $SDKMANAGER "ndk;$NDKV"
+        ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$NDKV
+        ANDROID_NDK_BIN=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin
+        echo "ANDROID_NDK_BIN=$ANDROID_NDK_BIN" >> $GITHUB_ENV
+
+    - name: Compile
+      run: |
+        export PATH=${{ env.ANDROID_NDK_BIN }}:$PATH
+        make -j EXE=PlentyChess-android-neon arch=android
+
+    - name: Bench
+      run: |
+        bench=$(git show --summary | grep -oE 'Bench: [0-9]+' | awk '{print $2}')
+        ./PlentyChess-android-neon bench 2> output
+        real=$(grep 'Nodes searched' output | awk '{print $4}')
+        if [[ "$bench" != "$real" ]]; then echo "got $real, expected $bench (real: '$(git show --summary)')" && exit 1; fi
+
+    - name: Upload binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: PlentyChess-android-neon
+        path: ./PlentyChess-android-neon
+
+    - name: Create prerelease
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: android-build-${{ github.run_number }}
+        name: PlentyChess Android Build ${{ github.run_number }}
+        prerelease: true
+        files: ./PlentyChess-android-neon
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
