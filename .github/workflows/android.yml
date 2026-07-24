@@ -6,6 +6,9 @@ on:
     branches: [ "main", "master" ]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: PlentyChess Android
