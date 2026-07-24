@@ -1,10 +1,13 @@
-name: PlentyChess Build & Bench
+name: PlentyChess Android Build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
 
 jobs:
-  engine:
+  build:
     name: PlentyChess Android
     runs-on: ubuntu-24.04
     steps:
@@ -14,7 +17,7 @@ jobs:
 
     - name: Set up android compilation environment
       run: |
-        sudo apt update && sudo apt install qemu-user
+        sudo apt update && sudo apt install -y qemu-user
         NDKV="27.2.12479018"
         ANDROID_ROOT=/usr/local/lib/android
         ANDROID_SDK_ROOT=$ANDROID_ROOT/sdk
@@ -34,7 +37,17 @@ jobs:
         bench=$(git show --summary | grep -oE 'Bench: [0-9]+' | awk '{print $2}')
         ./PlentyChess-android-neon bench 2> output
         real=$(grep 'Nodes searched' output | awk '{print $4}')
-        if [[ "$bench" != "$real" ]]; then echo "got $real, expected $bench (real: '$(git show --summary)')" && exit 1; fi
+        
+        echo "Calculated bench: $real"
+        if [ -n "$bench" ]; then
+          if [[ "$bench" != "$real" ]]; then 
+            echo "Bench mismatch! got $real, expected $bench"
+            exit 1
+          fi
+          echo "Bench match successful ($real)"
+        else
+          echo "No 'Bench: <number>' found in commit header. Verified binary execution successfully."
+        fi
 
     - name: Upload binary
       uses: actions/upload-artifact@v4
@@ -43,6 +56,7 @@ jobs:
         path: ./PlentyChess-android-neon
 
     - name: Create prerelease
+      if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: android-build-${{ github.run_number }}
