@@ -141,8 +141,8 @@ TUNE_INT_DISABLED(lmrMcBase, 2, 1, 10);
 TUNE_INT_DISABLED(lmrMcPv, 2, 1, 10);
 TUNE_INT(lmrMinDepth, 322, 100, 600);
 
-TUNE_INT(lmrReductionOffsetQuietOrNormalCapture, 134, 0, 300);
-TUNE_INT(lmrReductionOffsetImportantCapture, 14, 0, 100);
+TUNE_INT(lmrReductionOffsetQuietOrNormalCapture, 128, 0, 300);
+TUNE_INT(lmrReductionOffsetImportantCapture, -7, -100, 100);
 TUNE_INT(lmrCheckQuietOrNormalCapture, 108, 0, 230);
 TUNE_INT(lmrCheckImportantCapture, 63, 0, 120);
 TUNE_INT(lmrTtPvQuietOrNormalCapture, 169, 0, 400);
@@ -156,7 +156,6 @@ TUNE_INT(lmrQuietHistoryDivisor, 28812, 10000, 60000);
 TUNE_INT(lmrHistoryFactorCapture, 3156141, 2500000, 4000000);
 TUNE_INT(lmrHistoryFactorImportantCapture, 2948964, 2500000, 4000000);
 TUNE_INT(lmrImportantBadCaptureOffset, 119, 0, 230);
-TUNE_INT(lmrImportantCaptureFactor, 29, 0, 60);
 TUNE_INT(lmrQuietPvNodeOffset, 22, 0, 50);
 TUNE_INT(lmrQuietImproving, 54, 0, 100);
 
@@ -950,9 +949,9 @@ Eval Worker::search(Board* board, SearchStack* stack, Depth depth, Eval alpha, E
             if (!pvNode && !capture) {
                 int lmpMargin;
                 if (improving)
-                    lmpMargin = 3863191 + 77 * depth * depth + 1500 * depth + moveHistory;
+                    lmpMargin = 3863191 + 77 * depth * depth + 1500 * depth + 30 * moveHistory;
                 else
-                    lmpMargin = 2958636 + 16 * depth * depth + 4500 * depth + moveHistory;
+                    lmpMargin = 2958636 + 16 * depth * depth + 4500 * depth + 30 * moveHistory;
 
                 if (moveCount >= lmpMargin / 1000000) {
                     movegen.skipQuietMoves();
@@ -1103,6 +1102,8 @@ Eval Worker::search(Board* board, SearchStack* stack, Depth depth, Eval alpha, E
 
             if (cutNode)
                 reduction += lmrCutnode;
+            
+            reduction += 80 * (ttMove && board->isCapture(ttMove));
 
             if (stack->ttPv) {
                 reduction -= lmrTtPv(importantCapture);
@@ -1110,6 +1111,8 @@ Eval Worker::search(Board* board, SearchStack* stack, Depth depth, Eval alpha, E
             }
 
             if (capture) {
+                Piece capturedPiece = move.isEnpassant() ? Piece::PAWN : board->pieces[move.target()];
+                reduction += 19 - PIECE_VALUES[capturedPiece] * 12 / 100;
                 reduction -= moveHistory * std::abs(moveHistory) / lmrCaptureHistoryDivisor(importantCapture);
 
                 if (importantCapture) {
