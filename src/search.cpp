@@ -928,6 +928,8 @@ Eval Worker::search(Board* board, SearchStack* stack, Depth depth, Eval alpha, E
             continue;
         if (rootNode && std::find(excludedRootMoves.begin(), excludedRootMoves.end(), move) != excludedRootMoves.end())
             continue;
+        if (rootNode && std::find_if(rootMoves.begin(), rootMoves.end(), [&](const RootMove& rm) { return rm.move == move; }) == rootMoves.end())
+            continue;
 
         if (!board->isLegal(move))
             continue;
@@ -1106,7 +1108,7 @@ Eval Worker::search(Board* board, SearchStack* stack, Depth depth, Eval alpha, E
 
             if (cutNode)
                 reduction += lmrCutnode;
-            
+
             reduction += 80 * (ttMove && board->isCapture(ttMove));
 
             if (stack->ttPv) {
@@ -1117,13 +1119,14 @@ Eval Worker::search(Board* board, SearchStack* stack, Depth depth, Eval alpha, E
             if (capture) {
                 Piece capturedPiece = move.isEnpassant() ? Piece::PAWN : board->pieces[move.target()];
                 reduction += 19 - PIECE_VALUES[capturedPiece] * 12 / 100;
-                reduction -= moveHistory * std::abs(moveHistory) / lmrCaptureHistoryDivisor(importantCapture);
 
                 if (importantCapture) {
                     reduction += lmrImportantBadCaptureOffset * (movegen.stage == STAGE_PLAY_BAD_CAPTURES);
                     int factor = std::clamp(150 - 10 * depth / 100, 29, 100);
                     reduction = factor * reduction / 100;
                 }
+
+                reduction -= moveHistory * std::abs(moveHistory) / lmrCaptureHistoryDivisor(importantCapture);
             }
             else {
                 reduction -= 100 * moveHistory / lmrQuietHistoryDivisor;
@@ -1318,7 +1321,7 @@ void Worker::tsearch() {
     nnue.reset(&rootBoard);
 
     Move bestTbMove = Move::none();
-    if (mainThread && BB::popcount(rootBoard.byColor[Color::WHITE] | rootBoard.byColor[Color::BLACK]) <= std::min(int(TB_LARGEST), UCI::Options.syzygyProbeLimit.value)) {
+    if (mainThread && searchParameters.searchmoves.empty() && BB::popcount(rootBoard.byColor[Color::WHITE] | rootBoard.byColor[Color::BLACK]) <= std::min(int(TB_LARGEST), UCI::Options.syzygyProbeLimit.value)) {
         unsigned result = tb_probe_root(
             rootBoard.byColor[Color::WHITE],
             rootBoard.byColor[Color::BLACK],
@@ -1380,7 +1383,8 @@ void Worker::iterativeDeepening() {
         MoveList moves;
         generateMoves(&rootBoard, moves);
         for (auto& move : moves) {
-            if (rootBoard.isLegal(move)) {
+            bool searchmovesAllowed = searchParameters.searchmoves.empty() || std::find(searchParameters.searchmoves.begin(), searchParameters.searchmoves.end(), move) != searchParameters.searchmoves.end();
+            if (rootBoard.isLegal(move) && searchmovesAllowed) {
                 multiPvCount++;
 
                 RootMove rootMove = {};
